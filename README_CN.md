@@ -1,11 +1,18 @@
-# dsh-portable-build
+# dsh-portable-kit
 
 **构建真正可移动的 DeepSeek Harness —— 一个文件夹,能拷进 U 盘,能 30 毫秒打快照,插件把它搞崩了能立刻回滚。**
 
 [English](./README.md)
 
 ```bash
+# Linux / macOS
 ./build.sh && cd out/DSH-Portable-linux-x64 && ./start
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+cd out\DSH-Portable-win-x64 ; .\start.cmd
 ```
 
 不需要 Node、不需要 Rust、不需要 sudo,系统里什么都不装。

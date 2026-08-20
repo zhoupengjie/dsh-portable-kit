@@ -1,11 +1,18 @@
-# dsh-portable-build
+# dsh-portable-kit
 
 **Build a truly portable DeepSeek Harness — one folder you can copy to a USB stick, snapshot in 30ms, and roll back the moment a bad plugin breaks it.**
 
 [中文文档](./README_CN.md)
 
 ```bash
+# Linux / macOS
 ./build.sh && cd out/DSH-Portable-linux-x64 && ./start
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+cd out\DSH-Portable-win-x64 ; .\start.cmd
 ```
 
 No Node. No Rust. No `sudo`. Nothing installed on your system.
