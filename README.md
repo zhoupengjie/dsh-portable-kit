@@ -104,9 +104,9 @@ cd out/DSH-Portable-linux-x64
 
 | Host | Needs |
 |---|---|
-| Linux | `curl`, `tar` (plus `unzip` to build Windows targets) |
+| Linux | `curl`, `tar` (plus `bsdtar` **or** `unzip` for Windows targets — most distros ship one) |
 | macOS | `curl`, `tar` — both preinstalled |
-| Windows | PowerShell 5.1+ — preinstalled on Win10/11 |
+| Windows | PowerShell 5.1+ — preinstalled on Win10/11. Builds Windows targets only, see [Cross-building](#cross-building) |
 
 Node.js is downloaded and SHA256-verified by the builder. Nothing is installed
 system-wide; the toolchain lives in `.toolchain/`.
@@ -116,7 +116,7 @@ system-wide; the toolchain lives in `.toolchain/`.
 | Flag | Description |
 |---|---|
 | `-t, --targets <list>` | Comma-separated targets, or `all`. Defaults to host |
-| `-d, --dsh-version <ver>` | `latest` / `next` / `0.1.0-rc.8`. Default `latest` |
+| `-d, --dsh-version <ver>` | `latest` / `next` / `0.1.1-rc.1`. Default `latest` |
 | `--pnpm-version <ver>` | pnpm version (default `11.7.0`) |
 | `--node-version <ver>` | Node version (default `v24.19.0`) |
 | `--registry <url>` | npm registry |
@@ -131,9 +131,34 @@ Targets: `linux-x64` `linux-arm64` `darwin-x64` `darwin-arm64` `win-x64` `win-ar
 
 ```bash
 ./build.sh -t all -z                           # every platform, packaged
-./build.sh -t linux-x64,win-x64 -d 0.1.0-rc.8
+./build.sh -t linux-x64,win-x64 -d 0.1.1-rc.1
 ./build.sh --cn                                # China mirrors
 ```
+
+### Mirrors
+
+`--cn` points the registry, the target Node runtime **and** the bootstrap host Node at
+npmmirror:
+
+```bash
+./build.sh --cn
+```
+
+The bootstrap scripts parse `--cn` themselves, which they have to: they must fetch the
+host Node *before* there is a Node to parse `--cn` with. That is also the single largest
+download in the build (50–90 MB), so skipping it would make the flag close to pointless.
+
+Environment variables override `--cn`:
+
+| Variable | Applies to | Default |
+|---|---|---|
+| `DSH_BUILD_NODE_MIRROR` | **bootstrap** — host Node download | `https://nodejs.org/dist` |
+| `DSH_BUILD_REGISTRY` | npm registry (same as `--registry`) | `https://registry.npmjs.org/` |
+| `DSH_BUILD_NODE_VERSION` | pinned Node version | `v24.19.0` |
+
+Mirrors don't weaken verification — `SHASUMS256.txt` is still fetched and every archive
+checked, with a mismatch deleting the download and aborting. npmmirror's copy is
+byte-identical to the nodejs.org one (verified), and its dist-tags are in sync.
 
 ## What you get
 
@@ -220,6 +245,9 @@ Stop DSH before restoring.
 
 ✅ Linux x64/arm64 (glibc) · Windows x64/arm64 · macOS x64/arm64
 
+Those are the *targets*. Which of them a given machine can build is a separate
+question — see [Cross-building](#cross-building).
+
 Only 6 of DSH's 453 dependencies are platform-bound, all using the
 optionalDependencies variant pattern:
 
@@ -273,9 +301,50 @@ is duplicated — `lib/build.mjs` holds all real logic and is already cross-plat
 | Purpose | Dependency |
 |---|---|
 | extract `.tar.gz` | `tar` (all three platforms) |
-| extract `.zip` | bsdtar on Windows/macOS; `unzip` on Linux |
+| extract `.zip` | `tar` on Windows/macOS (it is bsdtar); `bsdtar` or `unzip` on Linux |
 | create `.zip` | none — built-in `lib/zip.mjs` |
+| create `.tar.gz` | `tar` (POSIX hosts only) |
 | directory sizes | none — computed in Node |
+
+## Cross-building
+
+A POSIX host can build every target. A Windows host can only build Windows targets.
+
+| Host ↓ / Target → | `linux-*` | `darwin-*` | `win-*` |
+|---|---|---|---|
+| Linux | ✅ | ✅ | ✅ |
+| macOS | ✅ | ✅ | ✅ |
+| Windows | ❌ refused | ❌ refused | ✅ |
+
+The asymmetry is NTFS, not laziness. Two things break when a Windows host targets
+POSIX, and neither can be worked around from the shelled-out tools:
+
+- **No executable bit.** `fs.chmod` on Windows only toggles the read-only attribute,
+  and the bundled `bsdtar` rejects `--mode`, `--uid` and `--gid`. Every file in the
+  resulting `.tar.gz` lands as `0644`, so even `runtime/node/bin/node` is
+  `Permission denied` on the target machine.
+- **No symlinks.** `bin/npm`, `bin/npx` and `bin/corepack` in the official Linux and
+  macOS Node tarballs are symlinks, which an unprivileged Windows process cannot
+  create. The builder repairs these by copying the link target's contents (they are
+  `#!/usr/bin/env node` scripts, so a copy behaves identically) — but that only fixes
+  extraction, not the executable bit above.
+
+Such a build would exit 0 and fail only when someone tries to *use* the folder, so
+the builder refuses it up front instead. Build POSIX targets on a POSIX host — WSL
+is enough:
+
+```bash
+wsl -- sh ./build.sh -t linux-x64 -z
+```
+
+Cross-building the other way is fully supported: a Linux host produces a Windows
+package that runs unmodified, `.bin/` aside (see below).
+
+`app/node_modules/.bin` always carries the *host's* shim flavour — symlinks from a
+POSIX host, `.cmd`/`.ps1` from Windows. It is vestigial: the launchers invoke
+`lib/bin.js` and `pnpm.cjs` by path, and `PATH` gets the package root rather than
+`.bin`. Deleting `.bin` entirely leaves `dsh`, `pnpm` and `dsh plugin` working, so a
+cross-built package is unaffected.
 
 ## Security note
 
@@ -287,13 +356,14 @@ removable media, or exclude it and re-authenticate on the new machine.
 
 - exFAT/FAT32 USB sticks don't support symlinks. The remaining links are all `.bin/`
   CLI shims; DSH invokes `node .../lib/bin.js` directly, so nothing breaks.
+- Windows hosts can only build Windows targets — see [Cross-building](#cross-building).
 - Moving between Linux and Windows requires building both targets.
 - Upstream adaptation risk is yours — no third party vets a new DSH release for you.
   Snapshot before upgrading.
 
 ## Test status
 
-Measured on Arch Linux x86_64 with `-t linux-x64,win-x64`:
+### Linux host — Arch x86_64, `-t linux-x64,win-x64`
 
 | Check | Result |
 |---|---|
@@ -308,9 +378,39 @@ Measured on Arch Linux x86_64 with `-t linux-x64,win-x64`:
 | Web server | ✅ HTTP 200, `<title>DeepSeek Harness</title>` |
 | Built-in ZIP writer | ✅ `unzip -t` clean, CRLF correct |
 
-**Untested:** `build.ps1` has never run on Windows (no PowerShell on the dev machine);
-macOS and Windows outputs were verified for layout and packaging but never launched
-on real hardware; arm64 targets have not been built.
+### Windows host — Windows 11 x64, PowerShell 5.1, `-t win-x64`
+
+| Check | Result |
+|---|---|
+| `build.ps1` bootstrap + SHA256 | ✅ |
+| Flag passthrough | ✅ `-t` `-d` `-o` `-z` `--targets` all reach `build.mjs` |
+| npm install | ✅ 451 packages in 20m (Defender scanning dominates) |
+| Native pruning | ✅ keeps 4/drops 55 |
+| Portability self-check | ✅ 0 symlinks — npm emits `.cmd`/`.ps1` shims on Windows |
+| `dsh.cmd --version` | ✅ `0.1.0-rc.7` |
+| `pnpm.cmd --version` | ✅ `11.7.0` — the bundled one, not a global install |
+| `dsh-snap.cmd` create/list | ✅ |
+| Built-in ZIP writer | ✅ 107.6 MB, extracts and runs after moving |
+| POSIX targets | ✅ refused up front (see [Cross-building](#cross-building)) |
+
+### Cross-build: Linux host → Windows target, verified on real Windows
+
+The `.zip` produced by `./build.sh -t win-x64 -z` on Arch, copied to Windows 11:
+
+| Check | Result |
+|---|---|
+| SHA256 after transfer | ✅ matches |
+| `Expand-Archive` | ✅ — the hand-written ZIP writer satisfies the strict extractor |
+| `.cmd` line endings | ✅ 32 CRLF, 0 bare LF |
+| `dsh.cmd --version` | ✅ `0.1.0-rc.7` |
+| `pnpm.cmd --version` | ✅ `11.7.0` |
+| `dsh.cmd plugin list` | ✅ forwards to pnpm, initialises the profile |
+| Pruning correctness | ✅ kept exactly the four `win32-x64` natives |
+| Web server | ✅ HTTP 200, `<title>DeepSeek Harness</title>` |
+| `.bin` flavour | ⚠️ 16 dereferenced symlinks, no `.cmd` — unused, nothing breaks |
+
+**Untested:** macOS on real hardware; arm64 targets on real hardware; `start.cmd`'s
+browser-launch path (the server itself is covered above).
 
 ## Related
 
