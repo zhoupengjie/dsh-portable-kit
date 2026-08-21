@@ -10,6 +10,14 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 NODE_VERSION=${DSH_BUILD_NODE_VERSION:-v24.19.0}
 NODE_MIRROR=${DSH_BUILD_NODE_MIRROR:-https://nodejs.org/dist}
+# --cn 由 lib/build.mjs 解析,可自举早于它 —— 这里得自己认一次。否则最大的那个
+# 下载(宿主 Node,约 50–90MB)仍走海外源,大陆用户加了 --cn 也照样卡在第一步。
+# 显式设过 DSH_BUILD_NODE_MIRROR 的,以环境变量为准。
+if [ -z "${DSH_BUILD_NODE_MIRROR:-}" ]; then
+  case " $* " in
+    *" --cn "*) NODE_MIRROR=https://npmmirror.com/mirrors/node ;;
+  esac
+fi
 TOOLCHAIN="$ROOT/.toolchain"
 
 # ── 探测宿主平台 ──────────────────────────────────────────────────────────

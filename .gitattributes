@@ -1,0 +1,13 @@
+# 换行符必须钉死,否则跨平台 clone 会把引导脚本弄坏。
+* text=auto eol=lf
+
+# build.sh 在 Linux/macOS 上由 /bin/sh 执行,带 CR 会直接报错,必须永远是 LF。
+*.sh text eol=lf
+
+# build.ps1 反过来:Windows PowerShell 5.1 读无 BOM 的 .ps1 时按本机 ANSI(中文
+# 系统是 GBK)解码,注释里的中文会被拆成乱码并吃掉引号,脚本根本无法解析 ——
+# 所以文件必须带 UTF-8 BOM(已写进内容里)并保持 CRLF。
+*.ps1 text eol=crlf
+
+*.mjs text eol=lf
+*.md  text eol=lf

@@ -1,4 +1,4 @@
-# DSH Portable 构建系统 —— 自举入口(Windows / PowerShell)
+﻿# DSH Portable 构建系统 —— 自举入口(Windows / PowerShell)
 #
 # build.sh 的双胞胎。职责完全相同:探测本机 os/arch,把固定版 Node 拉到
 # .toolchain/ 里,然后把控制权交给 lib/build.mjs。
@@ -7,18 +7,20 @@
 # 引导层是唯一必须双写的部分,因为 sh 和 PowerShell 各自只在本平台保证存在。
 #
 # 用法:
-#   powershell -ExecutionPolicy Bypass -File .\build.ps1 -Targets win-x64 -Archive
+#   powershell -ExecutionPolicy Bypass -File .\build.ps1 --targets win-x64 --archive
 
-[CmdletBinding()]
-param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Rest
-)
+# 不用 param() / [CmdletBinding()]:PowerShell 的公共参数会抢走短选项 ——
+# -d 被当成 -Debug 吞掉(build.mjs 收不到版本号),-o 与 -OutVariable/-OutBuffer
+# 歧义直接报错。只有 $args 能把命令行原样转交给 build.mjs。
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $NodeVersion = if ($env:DSH_BUILD_NODE_VERSION) { $env:DSH_BUILD_NODE_VERSION } else { 'v24.19.0' }
-$NodeMirror  = if ($env:DSH_BUILD_NODE_MIRROR)  { $env:DSH_BUILD_NODE_MIRROR }  else { 'https://nodejs.org/dist' }
+# --cn 由 lib/build.mjs 解析,可自举早于它 —— 这里得自己认一次,否则最大的那个
+# 下载(宿主 Node)仍走海外源。显式设过环境变量的,以环境变量为准。
+$NodeMirror  = if ($env:DSH_BUILD_NODE_MIRROR) { $env:DSH_BUILD_NODE_MIRROR }
+               elseif ($args -contains '--cn') { 'https://npmmirror.com/mirrors/node' }
+               else { 'https://nodejs.org/dist' }
 $Toolchain   = Join-Path $Root '.toolchain'
 
 # ── 探测宿主架构 ──────────────────────────────────────────────────────────
@@ -67,5 +69,5 @@ if (-not (Test-Path $NodeBin)) {
 
 Write-Host "==> 自举完成:$(& $NodeBin --version) ($HostTarget)"
 $buildScript = Join-Path $Root 'lib\build.mjs'
-& $NodeBin $buildScript --host $HostTarget @Rest
+& $NodeBin $buildScript --host $HostTarget @args
 exit $LASTEXITCODE
