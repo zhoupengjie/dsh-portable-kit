@@ -108,6 +108,10 @@ Node.js 由构建器自动下载并做 SHA256 校验。不往系统里装任何�
 
 ## 用法
 
+参数加在入口脚本上 —— Linux/macOS 是 `build.sh`,Windows 是 `build.ps1`。
+两者都把参数**原样**转交给 `lib/build.mjs`,所以各平台写法完全一致。
+注意用下面这套长/短选项,**不要**用 PowerShell 风格的 `-Targets`。
+
 | 选项 | 说明 |
 |---|---|
 | `-t, --targets <列表>` | 目标平台,逗号分隔,或 `all`。默认宿主平台 |
@@ -116,7 +120,7 @@ Node.js 由构建器自动下载并做 SHA256 校验。不往系统里装任何�
 | `--node-version <版本>` | Node 版本(默认 `v24.19.0`) |
 | `--registry <地址>` | npm registry |
 | `--node-mirror <地址>` | Node 下载源 |
-| `--cn` | 一键切到 npmmirror(registry + Node 源) |
+| `--cn` | 一键切到 npmmirror —— 自举层与 `build.mjs` **各读一次** |
 | `--libc <glibc\|musl>` | Linux 目标的 libc(默认 `glibc`) |
 | `-o, --out <目录>` | 输出目录(默认 `./out`) |
 | `--fresh` | 忽略缓存的运行时树,强制重新安装 |
@@ -124,9 +128,17 @@ Node.js 由构建器自动下载并做 SHA256 校验。不往系统里装任何�
 可选目标:`linux-x64` `linux-arm64` `darwin-x64` `darwin-arm64` `win-x64` `win-arm64`
 
 ```bash
+# Linux / macOS
 ./build.sh -t all                              # 全平台
 ./build.sh -t linux-x64,win-x64 -d 0.1.1-rc.1
 ./build.sh --cn                                # 国内镜像
+```
+
+```powershell
+# Windows —— .\build.ps1 之后的才是给构建器的;
+# -ExecutionPolicy 和 -File 是给 powershell.exe 本身的
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -t win-x64 -d 0.1.1-rc.1
+powershell -ExecutionPolicy Bypass -File .\build.ps1 --cn
 ```
 
 ### 中国大陆:用国内镜像

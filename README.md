@@ -113,6 +113,10 @@ system-wide; the toolchain lives in `.toolchain/`.
 
 ## Usage
 
+Flags go on the entry script — `build.sh` on Linux/macOS, `build.ps1` on Windows.
+Both hand them to `lib/build.mjs` verbatim, so the spelling is identical on every
+platform. Use the long/short forms below, *not* PowerShell-style `-Targets`.
+
 | Flag | Description |
 |---|---|
 | `-t, --targets <list>` | Comma-separated targets, or `all`. Defaults to host |
@@ -121,7 +125,7 @@ system-wide; the toolchain lives in `.toolchain/`.
 | `--node-version <ver>` | Node version (default `v24.19.0`) |
 | `--registry <url>` | npm registry |
 | `--node-mirror <url>` | Node download mirror |
-| `--cn` | Shortcut for npmmirror (registry + Node) |
+| `--cn` | Shortcut for npmmirror — read by the bootstrap *and* `build.mjs` |
 | `--libc <glibc\|musl>` | libc for Linux targets (default `glibc`) |
 | `-o, --out <dir>` | Output directory (default `./out`) |
 | `--fresh` | Ignore the cached runtime tree and reinstall |
@@ -129,9 +133,17 @@ system-wide; the toolchain lives in `.toolchain/`.
 Targets: `linux-x64` `linux-arm64` `darwin-x64` `darwin-arm64` `win-x64` `win-arm64`
 
 ```bash
+# Linux / macOS
 ./build.sh -t all                              # every platform
 ./build.sh -t linux-x64,win-x64 -d 0.1.1-rc.1
 ./build.sh --cn                                # China mirrors
+```
+
+```powershell
+# Windows — everything after .\build.ps1 goes to the builder;
+# -ExecutionPolicy and -File belong to powershell.exe itself
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -t win-x64 -d 0.1.1-rc.1
+powershell -ExecutionPolicy Bypass -File .\build.ps1 --cn
 ```
 
 ### Mirrors
