@@ -27,8 +27,8 @@ $Toolchain   = Join-Path $Root '.toolchain'
 $HostArch = switch ($env:PROCESSOR_ARCHITECTURE) {
     'AMD64' { 'x64' }
     'ARM64' { 'arm64' }
-    'x86'   { if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { throw '不支持 32 位 Windows' } }
-    default { throw "不支持的宿主架构: $env:PROCESSOR_ARCHITECTURE" }
+    'x86'   { if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { throw '32-bit Windows is not supported' } }
+    default { throw "Unsupported host arch: $env:PROCESSOR_ARCHITECTURE" }
 }
 $HostTarget = "win-$HostArch"
 $Archive = "node-$NodeVersion-win-$HostArch.zip"
@@ -37,7 +37,7 @@ $NodeBin = Join-Path $NodeDir 'node.exe'
 
 # ── 拉取并校验宿主 Node(已存在则跳过)─────────────────────────────────────
 if (-not (Test-Path $NodeBin)) {
-    Write-Host "==> 自举:下载 Node $NodeVersion ($HostTarget)"
+    Write-Host "==> Bootstrap: downloading Node $NodeVersion ($HostTarget)"
     $downloads = Join-Path $Toolchain 'downloads'
     New-Item -ItemType Directory -Path $downloads -Force | Out-Null
     $dl = Join-Path $downloads $Archive
@@ -55,19 +55,19 @@ if (-not (Test-Path $NodeBin)) {
         $parts = $line.Trim() -split '\s+'
         if ($parts.Length -ge 2 -and $parts[1] -eq $Archive) { $want = $parts[0]; break }
     }
-    if (-not $want) { throw "SHASUMS256.txt 里找不到 $Archive" }
+    if (-not $want) { throw "$Archive not listed in SHASUMS256.txt" }
     $got = (Get-FileHash -Path $dl -Algorithm SHA256).Hash.ToLower()
     if ($want.ToLower() -ne $got) {
         Remove-Item $dl -Force
-        throw "Node 校验失败:期望 $want,实际 $got"
+        throw "Node checksum mismatch: expected $want, got $got"
     }
-    Write-Host "    校验通过 $($want.Substring(0,12))…"
+    Write-Host "    Checksum OK $($want.Substring(0,12))..."
 
     Expand-Archive -Path $dl -DestinationPath $Toolchain -Force
-    if (-not (Test-Path $NodeBin)) { throw "解压后仍找不到 node: $NodeBin" }
+    if (-not (Test-Path $NodeBin)) { throw "node still missing after extraction: $NodeBin" }
 }
 
-Write-Host "==> 自举完成:$(& $NodeBin --version) ($HostTarget)"
+Write-Host "==> Bootstrap done: $(& $NodeBin --version) ($HostTarget)"
 $buildScript = Join-Path $Root 'lib\build.mjs'
 & $NodeBin $buildScript --host $HostTarget @args
 exit $LASTEXITCODE

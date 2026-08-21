@@ -25,12 +25,12 @@ case "$(uname -s)" in
   Linux)   HOST_OS=linux ;;
   Darwin)  HOST_OS=darwin ;;
   MINGW*|MSYS*|CYGWIN*) HOST_OS=win ;;
-  *) echo "不支持的宿主系统: $(uname -s)" >&2; exit 2 ;;
+  *) echo "Unsupported host OS: $(uname -s)" >&2; exit 2 ;;
 esac
 case "$(uname -m)" in
   x86_64|amd64) HOST_ARCH=x64 ;;
   aarch64|arm64) HOST_ARCH=arm64 ;;
-  *) echo "不支持的宿主架构: $(uname -m)" >&2; exit 2 ;;
+  *) echo "Unsupported host arch: $(uname -m)" >&2; exit 2 ;;
 esac
 HOST="$HOST_OS-$HOST_ARCH"
 
@@ -53,7 +53,7 @@ sha256_of() {
 
 # ── 拉取并校验宿主 Node(已存在则跳过)─────────────────────────────────────
 if [ ! -x "$NODE_BIN" ]; then
-  echo "==> 自举:下载 Node $NODE_VERSION ($HOST)"
+  echo "==> Bootstrap: downloading Node $NODE_VERSION ($HOST)"
   mkdir -p "$TOOLCHAIN/downloads"
   DL="$TOOLCHAIN/downloads/$ARCHIVE"
   [ -f "$DL" ] || curl --fail --location --retry 3 --progress-bar \
@@ -64,18 +64,18 @@ if [ ! -x "$NODE_BIN" ]; then
   [ -f "$SUMS" ] || curl --fail --location --retry 3 --silent \
     --output "$SUMS" "$NODE_MIRROR/$NODE_VERSION/SHASUMS256.txt"
   WANT=$(awk -v f="$ARCHIVE" '$2 == f { print $1 }' "$SUMS")
-  [ -n "$WANT" ] || { echo "SHASUMS256.txt 里找不到 $ARCHIVE" >&2; exit 1; }
+  [ -n "$WANT" ] || { echo "$ARCHIVE not listed in SHASUMS256.txt" >&2; exit 1; }
   GOT=$(sha256_of "$DL")
-  [ "$WANT" = "$GOT" ] || { echo "Node 校验失败:期望 $WANT,实际 $GOT" >&2; rm -f "$DL"; exit 1; }
-  echo "    校验通过 ${WANT%"${WANT#????????}"}…"
+  [ "$WANT" = "$GOT" ] || { echo "Node checksum mismatch: expected $WANT, got $GOT" >&2; rm -f "$DL"; exit 1; }
+  echo "    Checksum OK ${WANT%"${WANT#????????}"}..."
 
   case "$ARCHIVE" in
     *.zip)     unzip -q "$DL" -d "$TOOLCHAIN" ;;
     *.tar.gz)  tar -xzf "$DL" -C "$TOOLCHAIN" ;;
     *.tar.xz)  tar -xJf "$DL" -C "$TOOLCHAIN" ;;
   esac
-  [ -x "$NODE_BIN" ] || { echo "解压后仍找不到 node: $NODE_BIN" >&2; exit 1; }
+  [ -x "$NODE_BIN" ] || { echo "node still missing after extraction: $NODE_BIN" >&2; exit 1; }
 fi
 
-echo "==> 自举完成:$("$NODE_BIN" --version) ($HOST)"
+echo "==> Bootstrap done: $("$NODE_BIN" --version) ($HOST)"
 exec "$NODE_BIN" "$ROOT/lib/build.mjs" --host "$HOST" "$@"
