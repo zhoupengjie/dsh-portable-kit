@@ -119,13 +119,12 @@ Node.js 由构建器自动下载并做 SHA256 校验。不往系统里装任何�
 | `--cn` | 一键切到 npmmirror(registry + Node 源) |
 | `--libc <glibc\|musl>` | Linux 目标的 libc(默认 `glibc`) |
 | `-o, --out <目录>` | 输出目录(默认 `./out`) |
-| `-z, --archive` | 构建后打包(`.tar.gz`,Windows 出 `.zip`) |
 | `--fresh` | 忽略缓存的运行时树,强制重新安装 |
 
 可选目标:`linux-x64` `linux-arm64` `darwin-x64` `darwin-arm64` `win-x64` `win-arm64`
 
 ```bash
-./build.sh -t all -z                           # 全平台 + 打包
+./build.sh -t all                              # 全平台
 ./build.sh -t linux-x64,win-x64 -d 0.1.1-rc.1
 ./build.sh --cn                                # 国内镜像
 ```
@@ -262,7 +261,7 @@ DSH 的 453 个依赖里只有 6 个绑平台,且都用 optionalDependencies 的
 ## 工作原理
 
 ```
-探测 os/arch → 下载并校验 Node → 装「胖树」→ 按目标裁剪 → 组装 → 可移动性自检 → 打包
+探测 os/arch → 下载并校验 Node → 装「胖树」→ 按目标裁剪 → 组装 → 可移动性自检
 ```
 
 **胖树**:先装官方包,扫描出带 `os`/`cpu`/`libc` 字段的包,顺着父包的
@@ -296,7 +295,6 @@ Python 在三个平台上**都不保证存在**。而需要双写的只有那约
 |---|---|
 | 解 `.tar.gz` | `tar`(三平台自带) |
 | 解 `.zip` | Windows/macOS 的 `tar` 就是 bsdtar;Linux 用 `bsdtar` 或 `unzip` |
-| 打 `.zip` | 无 —— 内置 `lib/zip.mjs` |
 | 统计目录体积 | 无 —— Node 内完成 |
 
 ## 交叉构建
@@ -313,8 +311,8 @@ POSIX 宿主可以构建全部目标;Windows 宿主只能构建 Windows 目标�
 无法通过外部命令绕开:
 
 - **没有可执行位。** Windows 上 `fs.chmod` 只切换只读属性,而系统自带的 bsdtar
-  不接受 `--mode`、`--uid`、`--gid`。打出的 `.tar.gz` 里所有文件都是 `0644`,
-  解到目标机后连 `runtime/node/bin/node` 都是 `Permission denied`。
+  NTFS 根本没有这个概念,组装出的目录里所有文件都是 `0644` ——
+  拷到目标机后连 `runtime/node/bin/node` 都是 `Permission denied`。
 - **建不了符号链接。** 官方 Linux / macOS 版 Node 压缩包里的 `bin/npm`、`bin/npx`、
   `bin/corepack` 都是符号链接,非管理员的 Windows 进程创建不了。构建器会按链接
   目标的内容复制成普通文件来兜底(它们都是 `#!/usr/bin/env node` 脚本,复制后
@@ -324,7 +322,7 @@ POSIX 宿主可以构建全部目标;Windows 宿主只能构建 Windows 目标�
 POSIX 目标请在 POSIX 宿主上构建,WSL 就够:
 
 ```bash
-wsl -- sh ./build.sh -t linux-x64 -z
+wsl -- sh ./build.sh -t linux-x64
 ```
 
 反方向是完全支持的:Linux 宿主产出的 Windows 包可以直接运行,`.bin/` 除外(见下)。
@@ -362,31 +360,27 @@ Windows 宿主产出 `.cmd`/`.ps1`。它是退化组件:启动器按路径直接
 | 保留策略 | ✅ 保留 10 份自动快照,手动的不动 |
 | `./dsh-restore` | ✅ 依赖离线重建,331ms |
 | web 服务 | ✅ HTTP 200,`<title>DeepSeek Harness</title>` |
-| 内置 ZIP 打包器 | ✅ `unzip -t` 无错,CRLF 正确 |
 
 ### Windows 宿主 —— Windows 11 x64,PowerShell 5.1,`-t win-x64`
 
 | 检查项 | 结果 |
 |---|---|
 | `build.ps1` 自举 + SHA256 | ✅ |
-| 参数透传 | ✅ `-t` `-d` `-o` `-z` `--targets` 均能到达 `build.mjs` |
+| 参数透传 | ✅ `-t` `-d` `-o` `--targets` 均能到达 `build.mjs` |
 | npm 安装 | ✅ 451 个包 / 20 分钟(主要耗时是 Defender 扫描) |
 | 原生包裁剪 | ✅ 留 4/裁 55 |
 | 可移动性自检 | ✅ 0 个符号链接 —— Windows 上 npm 产出 `.cmd`/`.ps1` shim |
 | `dsh.cmd --version` | ✅ `0.1.0-rc.7` |
 | `pnpm.cmd --version` | ✅ `11.7.0` —— 是包内那份,不是全局安装的 |
 | `dsh-snap.cmd` 建/列快照 | ✅ |
-| 内置 ZIP 打包器 | ✅ 107.6 MB,移动后解压仍可运行 |
 | POSIX 目标 | ✅ 参数校验阶段即拒绝(见[交叉构建](#交叉构建)) |
 
 ### 交叉构建:Linux 宿主 → Windows 目标,已在真机 Windows 验证
 
-Arch 上 `./build.sh -t win-x64 -z` 产出的 `.zip`,拷到 Windows 11:
+Arch 上 `./build.sh -t win-x64` 产出的目录,拷到 Windows 11:
 
 | 检查项 | 结果 |
 |---|---|
-| 传输后 SHA256 | ✅ 一致 |
-| `Expand-Archive` | ✅ —— 手写 ZIP 写入器能通过严格解压器 |
 | `.cmd` 换行符 | ✅ 32 个 CRLF,0 个裸 LF |
 | `dsh.cmd --version` | ✅ `0.1.0-rc.7` |
 | `pnpm.cmd --version` | ✅ `11.7.0` |

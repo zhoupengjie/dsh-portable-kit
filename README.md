@@ -124,13 +124,12 @@ system-wide; the toolchain lives in `.toolchain/`.
 | `--cn` | Shortcut for npmmirror (registry + Node) |
 | `--libc <glibc\|musl>` | libc for Linux targets (default `glibc`) |
 | `-o, --out <dir>` | Output directory (default `./out`) |
-| `-z, --archive` | Package the result (`.tar.gz`, or `.zip` for Windows) |
 | `--fresh` | Ignore the cached runtime tree and reinstall |
 
 Targets: `linux-x64` `linux-arm64` `darwin-x64` `darwin-arm64` `win-x64` `win-arm64`
 
 ```bash
-./build.sh -t all -z                           # every platform, packaged
+./build.sh -t all                              # every platform
 ./build.sh -t linux-x64,win-x64 -d 0.1.1-rc.1
 ./build.sh --cn                                # China mirrors
 ```
@@ -266,7 +265,7 @@ glibc requirement, so very old distros (CentOS 7) may still fail — untested.
 
 ```
 detect os/arch → download + verify Node → install "fat tree" → prune per target
-              → assemble → portability self-check → package
+              → assemble → portability self-check
 ```
 
 The **fat tree**: install the official package, scan for `os`/`cpu`/`libc` fields,
@@ -302,8 +301,6 @@ is duplicated — `lib/build.mjs` holds all real logic and is already cross-plat
 |---|---|
 | extract `.tar.gz` | `tar` (all three platforms) |
 | extract `.zip` | `tar` on Windows/macOS (it is bsdtar); `bsdtar` or `unzip` on Linux |
-| create `.zip` | none — built-in `lib/zip.mjs` |
-| create `.tar.gz` | `tar` (POSIX hosts only) |
 | directory sizes | none — computed in Node |
 
 ## Cross-building
@@ -320,9 +317,8 @@ The asymmetry is NTFS, not laziness. Two things break when a Windows host target
 POSIX, and neither can be worked around from the shelled-out tools:
 
 - **No executable bit.** `fs.chmod` on Windows only toggles the read-only attribute,
-  and the bundled `bsdtar` rejects `--mode`, `--uid` and `--gid`. Every file in the
-  resulting `.tar.gz` lands as `0644`, so even `runtime/node/bin/node` is
-  `Permission denied` on the target machine.
+  NTFS has no concept of one, so every file in the staged folder ends up `0644` —
+  even `runtime/node/bin/node` is `Permission denied` once it reaches a POSIX box.
 - **No symlinks.** `bin/npm`, `bin/npx` and `bin/corepack` in the official Linux and
   macOS Node tarballs are symlinks, which an unprivileged Windows process cannot
   create. The builder repairs these by copying the link target's contents (they are
@@ -334,7 +330,7 @@ the builder refuses it up front instead. Build POSIX targets on a POSIX host —
 is enough:
 
 ```bash
-wsl -- sh ./build.sh -t linux-x64 -z
+wsl -- sh ./build.sh -t linux-x64
 ```
 
 Cross-building the other way is fully supported: a Linux host produces a Windows
@@ -376,31 +372,27 @@ removable media, or exclude it and re-authenticate on the new machine.
 | Retention | ✅ 10 auto kept, manual preserved |
 | `./dsh-restore` | ✅ deps rebuilt offline, 331ms |
 | Web server | ✅ HTTP 200, `<title>DeepSeek Harness</title>` |
-| Built-in ZIP writer | ✅ `unzip -t` clean, CRLF correct |
 
 ### Windows host — Windows 11 x64, PowerShell 5.1, `-t win-x64`
 
 | Check | Result |
 |---|---|
 | `build.ps1` bootstrap + SHA256 | ✅ |
-| Flag passthrough | ✅ `-t` `-d` `-o` `-z` `--targets` all reach `build.mjs` |
+| Flag passthrough | ✅ `-t` `-d` `-o` `--targets` all reach `build.mjs` |
 | npm install | ✅ 451 packages in 20m (Defender scanning dominates) |
 | Native pruning | ✅ keeps 4/drops 55 |
 | Portability self-check | ✅ 0 symlinks — npm emits `.cmd`/`.ps1` shims on Windows |
 | `dsh.cmd --version` | ✅ `0.1.0-rc.7` |
 | `pnpm.cmd --version` | ✅ `11.7.0` — the bundled one, not a global install |
 | `dsh-snap.cmd` create/list | ✅ |
-| Built-in ZIP writer | ✅ 107.6 MB, extracts and runs after moving |
 | POSIX targets | ✅ refused up front (see [Cross-building](#cross-building)) |
 
 ### Cross-build: Linux host → Windows target, verified on real Windows
 
-The `.zip` produced by `./build.sh -t win-x64 -z` on Arch, copied to Windows 11:
+The folder produced by `./build.sh -t win-x64` on Arch, copied to Windows 11:
 
 | Check | Result |
 |---|---|
-| SHA256 after transfer | ✅ matches |
-| `Expand-Archive` | ✅ — the hand-written ZIP writer satisfies the strict extractor |
 | `.cmd` line endings | ✅ 32 CRLF, 0 bare LF |
 | `dsh.cmd --version` | ✅ `0.1.0-rc.7` |
 | `pnpm.cmd --version` | ✅ `11.7.0` |
